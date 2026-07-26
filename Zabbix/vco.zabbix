@@ -1,0 +1,91 @@
+zabbix_export:
+  version: '6.4'
+  templates:
+    - template: 'VMware vRealize Orchestrator Standalone by HTTP'
+      name: 'VMware vRealize Orchestrator Standalone by HTTP'
+      groups:
+        - name: 'Templates/Applications'
+      macros:
+        - macro: '{$VCO.HOST}'
+          value: 'vco-standalone.domain.local'
+          description: 'FQDN or IP of the standalone vCO server'
+        - macro: '{$VCO.PORT}'
+          value: '8281'
+          description: 'vCO API Port (default 8281)'
+        - macro: '{$VCO.USER}'
+          value: 'zabbix_mon'
+        - macro: '{$VCO.PASS}'
+          value: 'your_vco_password'
+      items:
+        # 1. System Service Health
+        - name: 'vCO: Service Health Status'
+          type: HTTP_AGENT
+          key: vco.health.status
+          url: 'https://{$VCO.HOST}:{$VCO.PORT}/vco/api/health-status'
+          authtype: BASIC
+          username: '{$VCO.USER}'
+          password: '{$VCO.PASS}'
+          value_type: TEXT
+          delay: 1m
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.status'
+          triggers:
+            - expression: 'last(/VMware vRealize Orchestrator Standalone by HTTP/vco.health.status)<>"STARTUP_COMPLETED"'
+              name: 'vCO Service Health is degraded: {ITEM.VALUE}'
+              priority: HIGH
+
+        # 2. Raw Running Workflows Query
+        - name: 'vCO: Active Running Workflows Raw'
+          type: HTTP_AGENT
+          key: vco.workflows.running.raw
+          url: 'https://{$VCO.HOST}:{$VCO.PORT}/vco/api/workflows?conditions=state%3DRUNNING'
+          authtype: BASIC
+          username: '{$VCO.USER}'
+          password: '{$VCO.PASS}'
+          value_type: TEXT
+          delay: 2m
+
+        # 3. Active Running Workflows Count
+        - name: 'vCO: Active Running Workflows Count'
+          type: DEPENDENT
+          key: vco.workflows.running.count
+          master_item:
+            key: vco.workflows.running.raw
+          value_type: NUMERIC_UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.link.length()'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+
+        # 4. Raw Failed Workflows Query
+        - name: 'vCO: Failed Workflows Raw'
+          type: HTTP_AGENT
+          key: vco.workflows.failed.raw
+          url: 'https://{$VCO.HOST}:{$VCO.PORT}/vco/api/workflows?conditions=state%3DFAILED'
+          authtype: BASIC
+          username: '{$VCO.USER}'
+          password: '{$VCO.PASS}'
+          value_type: TEXT
+          delay: 5m
+
+        # 5. Failed Workflows Count
+        - name: 'vCO: Failed Workflows Count'
+          type: DEPENDENT
+          key: vco.workflows.failed.count
+          master_item:
+            key: vco.workflows.failed.raw
+          value_type: NUMERIC_UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.link.length()'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          triggers:
+            - expression: 'change(/VMware vRealize Orchestrator Standalone by HTTP/vco.workflows.failed.count)>0'
+              name: 'New failed workflow detected on standalone vCO'
+              priority: WARNING

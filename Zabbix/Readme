@@ -1,0 +1,72 @@
+How to got gemini to write this and go over a generic template took ages as it doesn't know the 
+api endpoints will need to review those...
+
+This repository contains Zabbix templates and setup guides for agentless monitoring VRA / VCO
+
+
+Both implementations use HTTP Agent items with JSONPath preprocessing to query native REST APIs directly.
+
+Template 1: VMware Aria Automation (vRA)
+Overview
+This template monitors system health, database state, and cluster readiness for VMware Aria Automation 8.x environments. It automates the OAuth2 token lifecycle by using a long-lived Refresh Token to fetch short-lived Bearer Access Tokens.
+Prerequisites
+•	Zabbix Version: 6.4 or 7.0+
+•	vRA Permissions: Organization Member or Cloud Admin read access
+•	Network connectivity from Zabbix server/proxy to the vRA FQDN over HTTPS (443)
+Step-by-Step Installation
+1. Generate the vRA Refresh Token
+1.	Log in to the VMware Aria / vRA Web Interface.
+2.	Click your username in the top-right corner and select User Profile.
+3.	Under API Tokens, click Generate API Token.
+4.	Set a name (e.g., Zabbix Monitoring) and copy the generated token string.
+2. Import the Template
+1.	Save the vRA template YAML definition as vra_template.yaml.
+2.	Navigate to Data collection > Templates in Zabbix.
+3.	Click Import, select vra_template.yaml, and complete the import process.
+3. Create the Host & Configure Macros
+1.	Go to Data collection > Hosts > Create host.
+2.	Enter your Host Name (e.g., vRA-Production).
+3.	Link the template: VMware Aria Automation by HTTP.
+4.	Select the Macros tab and set the following Host Macros:
+Macro	Sample Value	Description
+{$VRA.HOST}	vra.domain.local	FQDN or IP of your vRA appliance
+{$VRA.REFRESH.TOKEN}	eyJhbGciOi...	The API token generated in Step 1
+5.	Click Add.
+Self-Signed Certificates: If your vRA environment uses self-signed SSL certificates, open the template's master HTTP items (vRA: Get Access Token and vRA: Raw Deployment Health) and set SSL verify peer to No.
+Template 2: Standalone vRealize Orchestrator (vCO)
+Overview
+This template provides single-server monitoring for standalone vRealize Orchestrator instances. It tracks overall service readiness, active execution threads, and failed workflow counts using direct HTTP Basic Authentication.
+Prerequisites
+•	Zabbix Version: 6.4 or 7.0+
+•	vCO Service Account: Dedicated user account with API access to the vCO Control Center/REST API
+•	Network access to the vCO server on TCP 8281 (default API port)
+Step-by-Step Installation
+1. Set Up Credentials
+1.	Ensure a local or domain service account (e.g., zabbix_mon) exists with read access to the vCO REST API.
+2.	Verify that the vCO REST API endpoint is accessible at https://<vCO-IP>:8281/vco/api/health-status.
+2. Import the Template
+1.	Save the standalone vCO template YAML definition as vco_standalone_template.yaml.
+2.	In Zabbix, go to Data collection > Templates.
+3.	Click Import, select vco_standalone_template.yaml, and confirm.
+3. Create the Host & Configure Macros
+1.	Go to Data collection > Hosts > Create host.
+2.	Enter your Host Name (e.g., vCO-Standalone-01).
+3.	Link the template: VMware vRealize Orchestrator Standalone by HTTP.
+4.	Go to the Macros tab and set the following Host Macros:
+Macro	Sample Value	Description
+{$VCO.HOST}	vco.domain.local	FQDN or IP of the vCO host
+{$VCO.PORT}	8281	vCO API service port
+{$VCO.USER}	zabbix_mon	Service account username
+{$VCO.PASS}	SecretPassword	Service account password
+5.	Click Add.
+Verification & Troubleshooting
+1.	Go to Monitoring > Latest data.
+2.	Filter by the newly created hosts.
+3.	Verify the following expected initial execution results:
+o	vRA Host: The vra.get.access_token item populates a bearer string without error, and vra.health.status returns UP.
+o	vCO Host: The vco.health.status item populates with status STARTUP_COMPLETED.
+Common Issues
+•	401 Unauthorized (vRA): Check that the {$VRA.REFRESH.TOKEN} hasn't expired and has sufficient organization roles.
+•	401 Unauthorized (vCO): Verify the basic authentication credentials in {$VCO.USER} and {$VCO.PASS}.
+•	Connection Refused / Timeout: Check firewall routes between Zabbix Server/Proxy and port 443 (vRA) or port 8281 (vCO)
+

@@ -1,0 +1,76 @@
+zabbix_export:
+  version: '6.4'
+  templates:
+    - template: 'VMware Aria Automation by HTTP'
+      name: 'VMware Aria Automation by HTTP'
+      groups:
+        - name: 'Templates/Applications'
+      macros:
+        - macro: '{$VRA.HOST}'
+          value: 'vra.domain.local' 
+          description: 'vRA FQDN or IP address'
+        - macro: '{$VRA.REFRESH.TOKEN}'
+          value: 'your_long_lived_refresh_token_here'
+          description: 'Long-lived API Refresh Token'
+      items:
+        # Master Item: Exchange Refresh Token for Access Token NFI How to do more than 90 day due to token # ttl fml
+        - name: 'vRA: Get Access Token'
+          type: HTTP_AGENT
+          key: vra.get.access_token
+          url: 'https://{$VRA.HOST}/iaas/api/login'
+          posts: '{"refreshToken": "{$VRA.REFRESH.TOKEN}"}'
+          headers:
+            - name: Content-Type
+              value: application/json
+          value_type: TEXT
+          delay: 15m # Refreshes access token every 15 minutes
+          history: 0d # Prevents storing sensitive tokens in Zabbix DB
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.token'
+
+        # Health Check Master Item using the Bearer Token
+        - name: 'vRA: Raw Deployment Health'
+          type: HTTP_AGENT
+          key: vra.health.raw
+          url: 'https://{$VRA.HOST}/deployment/api/health'
+          headers:
+            - name: Authorization
+              value: 'Bearer {item:vra.get.access_token.last()}'
+          value_type: TEXT
+          delay: 2m
+
+        # Dependent Item: Status Extraction
+        - name: 'vRA: System Health Status'
+          type: DEPENDENT
+          key: vra.health.status
+          master_item:
+            key: vra.health.raw
+          value_type: TEXT
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.status'
+          triggers:
+            - expression: 'last(/VMware Aria Automation by HTTP/vra.health.status)<>"UP"'
+              name: 'vRA System Health is degraded: {ITEM.VALUE}'
+              priority: HIGH
+
+        # Dependent Item: Database Status should be able to extend based on what API gives talk to Sasha
+        - name: 'vRA: Database Status'
+          type: DEPENDENT
+          key: vra.health.db_status
+          master_item:
+            key: vra.health.raw
+          value_type: TEXT
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.dbStatus'
+          triggers:
+            - expression: 'last(/VMware Aria Automation by HTTP/vra.health.db_status)<>"UP"'
+              name: 'vRA Database Status is degraded: {ITEM.VALUE}'
+              priority: HIGH
+			  
+			 
