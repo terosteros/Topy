@@ -1,2 +1,1 @@
-![ASCII Art Stencil](path/to/your/image.png)
-```http://googleusercontent.com/image_generation_content/409
+![ASCII Art Stencil](https://imgur.com/a/BRSv7cO))
